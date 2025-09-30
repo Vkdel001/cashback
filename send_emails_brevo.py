@@ -18,7 +18,7 @@ def send_policy_emails():
     # CONFIGURATION - UPDATE THESE VALUES
     SENDER_EMAIL = "CashBack@niclmauritius.site"    # Your verified sender email
     SENDER_NAME = "NIC Life Insurance Mauritius"     # Your company name
-    REPLY_TO_EMAIL = "nicarlife@nicl.mu"            # Reply-to email
+    REPLY_TO_EMAIL = "customerservice@nicl.mu"            # Reply-to email
     REPLY_TO_NAME = "NIC Life Insurance"             # Reply-to name
     
     # Verify sender email first
@@ -26,125 +26,82 @@ def send_policy_emails():
     print(f"📧 Reply-to: {REPLY_TO_NAME} <{REPLY_TO_EMAIL}>")
     print("⚠️  IMPORTANT: Make sure sender domain is verified in your Brevo account!")
     
-    # Email template - improved subject line
-    SUBJECT = "NIC Life Insurance - Policy Cash Back Communication"
-    # Professional HTML email template
+    # Email template - subject line with dynamic policy number
+    SUBJECT_TEMPLATE = "NIC Life Insurance - Cash Back Benefit - Policy {policy_number}"
+    # Professional HTML email template with formal content
     EMAIL_TEMPLATE_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NIC Life Insurance - Policy Cash Back Documentation</title>
+    <title>NIC Life Insurance - Cash Back Benefit</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     
-    <!-- Header -->
-    <div style="background-color: #3498db; color: #ffffff; padding: 30px 20px; text-align: center;">
-        <h1 style="margin: 0; font-size: 24px; font-weight: bold; color: #ffffff;">NIC Life Insurance Mauritius</h1>
-        <p style="margin: 5px 0 0 0; font-size: 14px; color: #ffffff;">Policy Cash Back Documentation</p>
-    </div>
-    
     <!-- Main Content -->
-    <div style="background: #ffffff; padding: 30px 20px; border: 1px solid #e0e0e0; border-top: none;">
+    <div style="background: #ffffff; padding: 30px 20px;
         
-        <p style="font-size: 16px; margin-bottom: 20px;">Dear <strong>{customer_name}</strong>,</p>
+        <p style="font-size: 16px; margin-bottom: 20px;">Dear Valued Client,</p>
         
         <p style="font-size: 14px; margin-bottom: 20px;">
-            We are pleased to provide you with your Life Insurance Policy Cash Back documentation.
+            Greetings from NIC.
+        </p>
+        
+        <p style="font-size: 14px; margin-bottom: 20px;">
+            We are pleased to inform you that you are entitled to a <strong>Cash Back benefit</strong> under your Life Insurance Policy.
         </p>
         
         <!-- Policy Info Box -->
-        <table style="width: 100%; background-color: #f8f9fa; border-left: 4px solid #3498db; margin: 20px 0;" cellpadding="15" cellspacing="0">
+        <table style="width: 100%; background-color: #f8f9fa; border-left: 4px solid #2c3e50; margin: 20px 0;" cellpadding="15" cellspacing="0">
             <tr>
                 <td>
-                    <p style="margin: 0; font-size: 16px;"><strong>Policy Number:</strong> <span style="color: #3498db; font-weight: bold;">{policy_number}</span></p>
+                    <p style="margin: 0; font-size: 16px;"><strong>Policy Number:</strong> <span style="color: #2c3e50; font-weight: bold;">{policy_number}</span></p>
                 </td>
             </tr>
         </table>
         
         <p style="font-size: 14px; margin-bottom: 15px;">
-            Please find your personalized documents attached to this email. The attachment contains:
+            Please find attached the following documents for your reference:
         </p>
         
         <ul style="font-size: 14px; margin-bottom: 20px; padding-left: 20px;">
-            <li style="margin-bottom: 8px;">Your official cash back letter</li>
-            <li style="margin-bottom: 8px;">The corresponding cash back form</li>
+            <li style="margin-bottom: 8px;">Cash Back Letter</li>
+            <li style="margin-bottom: 8px;">Cash Back Form</li>
         </ul>
         
         <!-- Security Notice -->
-        <table style="width: 100%; background-color: #fff3cd; border: 1px solid #ffeaa7; margin: 25px 0;" cellpadding="20" cellspacing="0">
-            <tr>
-                <td style="width: 40px; vertical-align: top; font-size: 20px; color: #856404;">🔐</td>
-                <td style="vertical-align: top;">
-                    <h3 style="color: #856404; margin: 0 0 10px 0; font-size: 16px; font-weight: bold;">Important Security Information</h3>
-                    <p style="margin: 0; font-size: 14px; color: #856404;">
-                        Your PDF document is password-protected for your security. Please use your <strong>NID number</strong> as the password to open the document.
-                    </p>
-                </td>
-            </tr>
-        </table>
-        
-        <p style="font-size: 14px; margin-bottom: 25px;">
-            If you have any questions or need assistance, please don't hesitate to contact us using the information below.
+        <p style="font-size: 14px; margin-bottom: 20px;">
+            <strong>Security Information:</strong> For your security, the attached PDF is password-protected. Please use your <strong>National Identity Number</strong> as the password to open the file.
         </p>
         
+        <!-- Instructions -->
+        <div style="background-color: #e8f4fd; border: 1px solid #bee5eb; padding: 20px; margin: 25px 0;">
+            <h3 style="color: #0c5460; margin: 0 0 15px 0; font-size: 16px; font-weight: bold;">Next Steps</h3>
+            <p style="margin: 0 0 15px 0; font-size: 14px; color: #0c5460;">
+                To proceed, kindly reply directly to this email with the following documents attached:
+            </p>
+            <ul style="font-size: 14px; color: #0c5460; margin: 0; padding-left: 20px;">
+                <li style="margin-bottom: 8px;">The completed and signed Cash Back form (both signatures are required for joint policies).</li>
+                <li style="margin-bottom: 8px;">A copy of your ID (copies of both IDs are required for joint policies).</li>
+                <li style="margin-bottom: 8px;">The upper part of your bank statement (for joint life policies, a joint bank account is required. If you do not hold one, please visit the nearest NIC branch to complete the Cash Back formalities).</li>
+            </ul>
+        </div>
+        
+        <p style="font-size: 14px; margin-bottom: 20px;">
+            Should you require any further assistance, our Customer Service team is available on <strong>602 3000</strong>, Monday to Friday, from 08:30 to 16:45.
+        </p>
+        
+
+        
         <p style="font-size: 14px; margin-bottom: 30px;">
-            Best regards,<br>
-            <strong>{sender_name}</strong>
+            Kind Regards,<br>
+            <strong>NIC - Serving you, Serving the Nation</strong>
         </p>
         
     </div>
     
-    <!-- Footer -->
-    <div style="background: #f8f9fa; padding: 25px 20px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-        
-        <!-- Contact Information -->
-        <table style="width: 100%; margin-bottom: 20px;" cellpadding="0" cellspacing="0">
-            <tr>
-                <td style="text-align: center;">
-                    <h3 style="color: #3498db; margin: 0 0 15px 0; font-size: 16px; font-weight: bold;">Contact Information</h3>
-                    
-                    <table style="margin: 0 auto; text-align: left;" cellpadding="5" cellspacing="0">
-                        <tr>
-                            <td style="font-size: 14px; color: #666666; padding: 5px 0;">
-                                <strong>📧 Email:</strong> <a href="mailto:nicarlife@nicl.mu" style="color: #3498db; text-decoration: none;">nicarlife@nicl.mu</a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="font-size: 14px; color: #666666; padding: 5px 0;">
-                                <strong>📞 Phone:</strong> <a href="tel:+2306023000" style="color: #3498db; text-decoration: none;">+230 602 3000</a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="font-size: 14px; color: #666666; padding: 5px 0;">
-                                <strong>📍 Address:</strong> NIC Centre, 217 Royal Road, Curepipe, Republic of Mauritius
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-        
-        <!-- Divider -->
-        <table style="width: 100%; margin: 20px 0;" cellpadding="0" cellspacing="0">
-            <tr>
-                <td style="border-top: 1px solid #e0e0e0; height: 1px; font-size: 1px;">&nbsp;</td>
-            </tr>
-        </table>
-        
-        <!-- Footer Note -->
-        <table style="width: 100%;" cellpadding="0" cellspacing="0">
-            <tr>
-                <td style="text-align: center;">
-                    <p style="font-size: 12px; color: #888888; margin: 0;">
-                        This is an automated message from NIC Life Insurance Mauritius. For assistance, please reply to this email or contact us using the information above.
-                    </p>
-                </td>
-            </tr>
-        </table>
-        
-    </div>
+
     
 </body>
 </html>
@@ -152,32 +109,30 @@ def send_policy_emails():
 
     # Plain text version for email clients that don't support HTML
     EMAIL_TEMPLATE_TEXT = """
-Dear {customer_name},
+Dear Valued Client,
 
-We are pleased to provide you with your Life Insurance Policy Cash Back documentation.
+Greetings from NIC.
+
+We are pleased to inform you that you are entitled to a CASH BACK BENEFIT under your Life Insurance Policy.
 
 Policy Number: {policy_number}
 
-Please find your personalized documents attached to this email. The attachment contains:
-- Your official cash back letter
-- The corresponding cash back form
+Please find attached the following documents for your reference:
+- Cash Back Letter
+- Cash Back Form
 
-IMPORTANT SECURITY INFORMATION:
-Your PDF document is password-protected for your security. Please use your NIC number as the password to open the document.
+For your security, the attached PDF is password-protected. Please use your National Identity number as the password to open the file.
 
-If you have any questions or need assistance, please don't hesitate to contact us.
+To proceed, kindly reply directly to this email with the following documents attached:
+- The completed and signed Cash Back form (both signatures are required for joint policies).
+- A copy of your ID (copies of both IDs are required for joint policies).
+- The upper part of your bank statement (for joint life policies, a joint bank account is required. If you do not hold one, please visit the nearest NIC branch to complete the Cash Back formalities).
 
-Best regards,
-{sender_name}
+Should you require any further assistance, our Customer Service team is available on 602 3000, Monday to Friday, from 08:30 to 16:45.
 
----
-CONTACT INFORMATION
-Email: nicarlife@nicl.mu
-Phone: +230 602 3000
-Address: NIC Centre, 217 Royal Road, Curepipe, Republic of Mauritius
+Kind Regards,
+NIC - Serving you, Serving the Nation
 
-NIC Life Insurance Mauritius
-This is an automated message. For assistance, please reply to this email or contact us using the information above.
 """
     
     # Get API key from environment variable
@@ -258,7 +213,10 @@ This is an automated message. For assistance, please reply to this email or cont
                 pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
             
             # Extract customer name (basic extraction from policy number)
-            customer_name = "Valued Customer"  # You can enhance this if names are available
+            customer_name = "Valued Client"  # Updated to match the formal greeting
+            
+            # Create dynamic subject line with policy number
+            email_subject = SUBJECT_TEMPLATE.format(policy_number=policy_lookup)
             
             # Prepare email content (both HTML and text versions)
             email_content_html = EMAIL_TEMPLATE_HTML.format(
@@ -278,7 +236,7 @@ This is an automated message. For assistance, please reply to this email or cont
                 to=[{"email": recipient_email}],
                 sender={"name": SENDER_NAME, "email": SENDER_EMAIL},
                 reply_to={"name": REPLY_TO_NAME, "email": REPLY_TO_EMAIL},
-                subject=SUBJECT,
+                subject=email_subject,
                 html_content=email_content_html,
                 text_content=email_content_text,
                 attachment=[{
@@ -332,7 +290,7 @@ SUMMARY:
 
 CONFIGURATION USED:
 - Sender: {SENDER_NAME} <{SENDER_EMAIL}>
-- Subject: {SUBJECT}
+- Subject Template: {SUBJECT_TEMPLATE}
 - API: Brevo (Sendinblue)
 
 FAILED POLICIES:
