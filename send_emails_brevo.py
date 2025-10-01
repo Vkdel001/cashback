@@ -254,12 +254,31 @@ NIC - Serving you, Serving the Nation
             time.sleep(0.1)  # Small delay between emails
             
         except ApiException as e:
+            # Enhanced error reporting for Brevo API errors
+            error_details = str(e)
+            if "401" in error_details:
+                error_reason = "Invalid API key or authentication failed"
+            elif "402" in error_details:
+                error_reason = "Insufficient credits or plan limit exceeded"
+            elif "400" in error_details:
+                error_reason = "Invalid email format or request data"
+            elif "403" in error_details:
+                error_reason = "Sender domain not verified or forbidden"
+            elif "429" in error_details:
+                error_reason = "Rate limit exceeded - too many requests"
+            elif "500" in error_details:
+                error_reason = "Brevo server error - temporary issue"
+            else:
+                error_reason = f"API Error: {error_details}"
+            
             print(f"❌ Failed to send to {recipient_email} - Policy: {policy_lookup}")
-            print(f"   Error: {e}")
+            print(f"   Reason: {error_reason}")
             failed_count += 1
             failed_policies.append(policy_lookup)
+            
         except Exception as e:
-            print(f"❌ Unexpected error for policy {policy_lookup}: {e}")
+            print(f"❌ Unexpected error for policy {policy_lookup} - Email: {recipient_email}")
+            print(f"   Reason: {str(e)}")
             failed_count += 1
             failed_policies.append(policy_lookup)
     
@@ -313,25 +332,41 @@ def install_requirements():
     os.system("pip install sib-api-v3-sdk pandas")
 
 if __name__ == "__main__":
-    print("BREVO EMAIL SENDER FOR POLICY DOCUMENTS")
-    print("=" * 50)
-    print()
-    print("⚠️  BEFORE RUNNING:")
-    print("1. Get your Brevo API key from: https://app.brevo.com/settings/keys/api")
-    print("2. Set BREVO_API_KEY environment variable with your API key")
-    print("3. Update SENDER_EMAIL, SENDER_NAME, and REPLY_TO_EMAIL in this script")
-    print("4. Make sure your sender email is verified in Brevo")
-    print("5. Run 'create_complete_analysis.py' first to generate PDF files")
-    print()
+    import sys
     
-    choice = input("Do you want to proceed? (y/n): ").lower().strip()
-    if choice == 'y':
-        # Check if required packages are installed
-        try:
-            import sib_api_v3_sdk
-        except ImportError:
-            install_requirements()
+    # Check if running in automated mode (from web interface)
+    automated_mode = len(sys.argv) > 1 and sys.argv[1] == "--automated"
+    
+    if not automated_mode:
+        print("BREVO EMAIL SENDER FOR POLICY DOCUMENTS")
+        print("=" * 50)
+        print()
+        print("⚠️  BEFORE RUNNING:")
+        print("1. Get your Brevo API key from: https://app.brevo.com/settings/keys/api")
+        print("2. Set BREVO_API_KEY environment variable with your API key")
+        print("3. Update SENDER_EMAIL, SENDER_NAME, and REPLY_TO_EMAIL in this script")
+        print("4. Make sure your sender email is verified in Brevo")
+        print("5. Run 'create_complete_analysis.py' first to generate PDF files")
+        print()
         
+        choice = input("Do you want to proceed? (y/n): ").lower().strip()
+        if choice != 'y':
+            print("Email sending cancelled.")
+            sys.exit(0)
+    
+    # Check if required packages are installed
+    try:
+        import sib_api_v3_sdk
+    except ImportError:
+        if not automated_mode:
+            install_requirements()
+        else:
+            print("❌ Required package sib_api_v3_sdk not installed")
+            sys.exit(1)
+    
+    # Run the email sending
+    try:
         send_policy_emails()
-    else:
-        print("Email sending cancelled.")
+    except Exception as e:
+        print(f"❌ Email sending failed: {str(e)}")
+        sys.exit(1)

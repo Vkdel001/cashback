@@ -4,6 +4,7 @@ import PyPDF2
 import re
 import os
 import zipfile
+import time
 from pathlib import Path
 from io import BytesIO
 
@@ -244,49 +245,536 @@ def create_download_zip(folder_path, zip_name):
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
 
-def merge_pdfs_streamlit():
-    """Streamlit interface for PDF merging"""
+
+
+def check_excel_file_exists():
+    """Check if Excel file exists for email sending"""
+    excel_locations = [
+        "Compile CBOpt Nov25.xlsx",
+        "storage/uploaded_files/latest_excel.xlsx",
+        "temp/temp_uploaded.xlsx"
+    ]
     
-    st.subheader("🖨️ Merge PDFs for Printing")
+    for location in excel_locations:
+        if os.path.exists(location):
+            return location
+    return None
+
+def check_pdf_files_exist():
+    """Check if PDF files exist for email sending"""
+    pdf_locations = [
+        "policies_with_email",
+        "storage/generated_pdfs/with_email"
+    ]
     
-    # Check if folder exists
-    if not Path("policies_without_email").exists():
-        st.warning("❌ No 'policies_without_email' folder found.")
-        return
+    for location in pdf_locations:
+        if os.path.exists(location):
+            pdf_files = list(Path(location).glob("*.pdf"))
+            if pdf_files:
+                return len(pdf_files)
+    return 0
+
+def check_pdf_files_without_email():
+    """Check if PDF files exist without email addresses (for printing)"""
+    pdf_locations = [
+        "policies_without_email",
+        "storage/generated_pdfs/without_email"
+    ]
     
-    # Count PDFs
-    pdf_files = list(Path("policies_without_email").glob("*.pdf"))
+    for location in pdf_locations:
+        if os.path.exists(location):
+            pdf_files = list(Path(location).glob("*.pdf"))
+            if pdf_files:
+                return len(pdf_files)
+    return 0
+
+def send_emails_via_subprocess():
+    """Send emails using subprocess to run the existing email script"""
+    import subprocess
+    import sys
     
-    if not pdf_files:
-        st.info("✅ No policies without email found. All policies have email addresses!")
-        return
+    st.subheader("📧 Sending Emails...")
     
-    st.info(f"📁 Found {len(pdf_files)} policies without email addresses")
-    st.info("🖨️ These policies need to be printed and distributed manually")
+    # Create placeholders for real-time updates
+    status_placeholder = st.empty()
+    progress_placeholder = st.empty()
+    metrics_placeholder = st.empty()
+    output_placeholder = st.empty()
     
-    # Show list of policies
-    with st.expander("📋 Policies to be merged for printing"):
-        for pdf_file in sorted(pdf_files):
-            st.write(f"• {pdf_file.stem}")
-    
-    # Merge button
-    if st.button("🖨️ Merge PDFs for Printing", type="primary"):
-        st.info("🔄 Use the command line to merge PDFs for printing:")
-        st.code("python merge_final.py", language="bash")
+    try:
+        # Prepare the command with automated flag
+        cmd = [sys.executable, "send_emails_brevo.py", "--automated"]
         
-        # Check if merged file already exists
-        if os.path.exists("policies_for_printing.pdf"):
-            st.success("✅ Found existing merged PDF file!")
-            with open("policies_for_printing.pdf", "rb") as file:
-                st.download_button(
-                    label="📥 Download Existing Merged PDF",
-                    data=file.read(),
-                    file_name="policies_for_printing.pdf",
-                    mime="application/pdf",
-                    key="download_existing_printing_pdf"
+        # Set up environment variables
+        env = os.environ.copy()
+        env['BREVO_API_KEY'] = os.getenv('BREVO_API_KEY', '')
+        
+        if not env['BREVO_API_KEY']:
+            st.error("❌ BREVO_API_KEY not set. Please set your API key in environment variables.")
+            st.code("set BREVO_API_KEY=your-api-key-here")
+            return
+        
+        status_placeholder.info("🚀 Starting email sending process...")
+        
+        # Start the subprocess with UTF-8 encoding
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            env=env,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        # Initialize counters and timing
+        sent_count = 0
+        failed_count = 0
+        total_count = 0
+        output_lines = []
+        failed_emails = []  # Track failed emails with details
+        successful_emails = []  # Track successful emails
+        start_time = time.time()
+        last_email_time = start_time
+        
+        # Read output in real-time
+        while True:
+            try:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    line = output.strip()
+                    output_lines.append(line)
+            except UnicodeDecodeError as e:
+                # Handle encoding errors gracefully
+                line = f"⚠️ Encoding error in output: {str(e)}"
+                output_lines.append(line)
+                continue
+                
+                # Parse different types of output
+                if "✅ Sent to" in line:
+                    sent_count += 1
+                    last_email_time = time.time()
+                    
+                    # Extract email and policy info from success message
+                    import re
+                    match = re.search(r'Sent to (.+?) - Policy: (.+)', line)
+                    if match:
+                        email, policy = match.groups()
+                        successful_emails.append({
+                            'email': email.strip(),
+                            'policy': policy.strip(),
+                            'timestamp': time.strftime("%H:%M:%S")
+                        })
+                    
+                    status_placeholder.success(f"📧 Successfully sent email #{sent_count}")
+                    
+                elif "❌ Failed" in line or ("Error" in line and "@" in line):
+                    failed_count += 1
+                    
+                    # Extract failure details
+                    import re
+                    # Try to extract email and policy from failure message
+                    email_match = re.search(r'(?:Failed to send to|Error.*?)(.+?@.+?)(?:\s|$)', line)
+                    policy_match = re.search(r'Policy: (.+?)(?:\s|$)', line)
+                    
+                    failed_info = {
+                        'email': email_match.group(1).strip() if email_match else 'Unknown',
+                        'policy': policy_match.group(1).strip() if policy_match else 'Unknown',
+                        'reason': line.strip(),
+                        'timestamp': time.strftime("%H:%M:%S")
+                    }
+                    failed_emails.append(failed_info)
+                    
+                    status_placeholder.error(f"❌ Email failed (Total failures: {failed_count})")
+                elif "📊 Loaded" in line and "policies" in line:
+                    # Extract total count from "📊 Loaded X policies from Excel"
+                    import re
+                    match = re.search(r'(\d+) policies', line)
+                    if match:
+                        total_count = int(match.group(1))
+                elif "📁 Found" in line and "PDF files" in line:
+                    progress_placeholder.info(line)
+                elif "🎉 EMAIL SENDING COMPLETED" in line:
+                    status_placeholder.success("🎉 Email sending completed!")
+                
+                # Update progress bar and metrics
+                if total_count > 0:
+                    processed = sent_count + failed_count
+                    progress = processed / total_count
+                    remaining = total_count - processed
+                    
+                    # Calculate estimated time remaining
+                    elapsed_time = time.time() - start_time
+                    if processed > 0:
+                        avg_time_per_email = elapsed_time / processed
+                        eta_seconds = avg_time_per_email * remaining
+                        eta_minutes = int(eta_seconds // 60)
+                        eta_seconds = int(eta_seconds % 60)
+                        eta_text = f" (ETA: {eta_minutes}m {eta_seconds}s)" if remaining > 0 else " (Complete!)"
+                    else:
+                        eta_text = ""
+                    
+                    # Enhanced progress bar with detailed info
+                    progress_placeholder.progress(
+                        progress, 
+                        f"📊 Progress: {processed}/{total_count} emails processed ({progress*100:.1f}%){eta_text}"
+                    )
+                    
+                    # Real-time metrics
+                    with metrics_placeholder.container():
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("✅ Sent", sent_count, delta=None)
+                        with col2:
+                            st.metric("❌ Failed", failed_count, delta=None)
+                        with col3:
+                            st.metric("⏳ Remaining", remaining, delta=None)
+                        with col4:
+                            success_rate = (sent_count / processed * 100) if processed > 0 else 0
+                            st.metric("📈 Success Rate", f"{success_rate:.1f}%", delta=None)
+                
+                # Show recent output with better formatting
+                if output_lines:
+                    recent_output = "\n".join(output_lines[-8:])  # Show last 8 lines
+                    output_placeholder.text_area("📋 Recent Activity:", recent_output, height=180)
+        
+        # Wait for process to complete
+        return_code = process.wait()
+        
+        # Show final results with enhanced feedback
+        total_time = time.time() - start_time
+        total_minutes = int(total_time // 60)
+        total_seconds = int(total_time % 60)
+        
+        if return_code == 0:
+            st.success(f"🎉 Email sending completed successfully in {total_minutes}m {total_seconds}s!")
+            st.balloons()
+            
+            # Show completion progress bar at 100%
+            progress_placeholder.progress(1.0, "✅ All emails processed - 100% Complete!")
+        else:
+            st.error(f"❌ Email sending failed with return code: {return_code} after {total_minutes}m {total_seconds}s")
+        
+        # Show comprehensive final summary
+        if sent_count > 0 or failed_count > 0:
+            st.markdown("---")
+            st.subheader("📊 Email Delivery Report")
+            
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("✅ Sent", sent_count)
+            with col2:
+                st.metric("❌ Failed", failed_count)
+            with col3:
+                success_rate = (sent_count / (sent_count + failed_count) * 100) if (sent_count + failed_count) > 0 else 0
+                st.metric("📊 Success Rate", f"{success_rate:.1f}%")
+            with col4:
+                st.metric("⏱️ Total Time", f"{total_minutes}m {total_seconds}s")
+            
+            # Detailed reports in tabs
+            tab1, tab2, tab3 = st.tabs(["❌ Failed Emails", "✅ Successful Emails", "📋 Summary"])
+            
+            with tab1:
+                if failed_emails:
+                    st.error(f"⚠️ {len(failed_emails)} emails failed to send")
+                    
+                    # Create DataFrame for failed emails
+                    failed_df = pd.DataFrame(failed_emails)
+                    
+                    # Display failed emails table
+                    st.dataframe(
+                        failed_df,
+                        column_config={
+                            "email": "📧 Email Address",
+                            "policy": "📄 Policy Number", 
+                            "reason": "❌ Failure Reason",
+                            "timestamp": "⏰ Time"
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Download failed emails as CSV
+                    csv_data = failed_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Failed Emails Report",
+                        data=csv_data,
+                        file_name=f"failed_emails_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+                    
+                    # Common failure reasons and solutions
+                    st.markdown("### 🔧 Common Issues & Solutions")
+                    st.info("""
+                    **Common failure reasons:**
+                    - **Invalid email format**: Check email addresses in Excel file
+                    - **Brevo API limits**: Check your Brevo plan limits
+                    - **Network timeout**: Retry sending failed emails
+                    - **Sender domain not verified**: Verify domain in Brevo dashboard
+                    """)
+                    
+                else:
+                    st.success("🎉 All emails were sent successfully!")
+            
+            with tab2:
+                if successful_emails:
+                    st.success(f"✅ {len(successful_emails)} emails sent successfully")
+                    
+                    # Create DataFrame for successful emails
+                    success_df = pd.DataFrame(successful_emails)
+                    
+                    # Display successful emails table
+                    st.dataframe(
+                        success_df,
+                        column_config={
+                            "email": "📧 Email Address",
+                            "policy": "📄 Policy Number",
+                            "timestamp": "⏰ Time Sent"
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Download successful emails as CSV
+                    csv_data = success_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Successful Emails Report",
+                        data=csv_data,
+                        file_name=f"successful_emails_{time.strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.error("❌ No emails were sent successfully")
+            
+            with tab3:
+                st.markdown("### 📈 Delivery Statistics")
+                
+                # Create summary statistics
+                total_processed = sent_count + failed_count
+                if total_processed > 0:
+                    # Success rate chart
+                    chart_data = pd.DataFrame({
+                        'Status': ['Successful', 'Failed'],
+                        'Count': [sent_count, failed_count],
+                        'Percentage': [
+                            (sent_count / total_processed) * 100,
+                            (failed_count / total_processed) * 100
+                        ]
+                    })
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.bar_chart(chart_data.set_index('Status')['Count'])
+                    
+                    with col2:
+                        st.markdown(f"""
+                        **📊 Summary Statistics:**
+                        - **Total Processed**: {total_processed} emails
+                        - **Success Rate**: {success_rate:.1f}%
+                        - **Average Speed**: {total_processed / (total_time / 60):.1f} emails/minute
+                        - **Processing Time**: {total_minutes}m {total_seconds}s
+                        """)
+                
+                # Recommendations based on results
+                if failed_count > 0:
+                    failure_rate = (failed_count / total_processed) * 100
+                    if failure_rate > 20:
+                        st.warning("⚠️ High failure rate detected. Consider checking email addresses and Brevo account status.")
+                    elif failure_rate > 10:
+                        st.info("💡 Some emails failed. Review the failed emails report for details.")
+                    else:
+                        st.success("✅ Low failure rate. Most emails were delivered successfully.")
+                else:
+                    st.success("🎉 Perfect delivery! All emails were sent successfully.")
+        
+        # Show complete output in expander
+        if output_lines:
+            with st.expander("📋 Complete Log"):
+                st.text("\n".join(output_lines))
+    
+    except Exception as e:
+        st.error(f"❌ Error running email script: {str(e)}")
+        st.exception(e)
+
+def merge_pdfs_for_printing():
+    """Merge PDFs without email addresses into a single printable file"""
+    st.subheader("🔗 Merging PDFs for Printing...")
+    
+    # Create placeholders for updates
+    status_placeholder = st.empty()
+    progress_placeholder = st.empty()
+    details_placeholder = st.empty()
+    
+    try:
+        # Find the correct input folder
+        input_folders = [
+            "policies_without_email",
+            "storage/generated_pdfs/without_email"
+        ]
+        
+        input_folder = None
+        for folder in input_folders:
+            if os.path.exists(folder):
+                pdf_files = list(Path(folder).glob("*.pdf"))
+                if pdf_files:
+                    input_folder = folder
+                    break
+        
+        if not input_folder:
+            st.error("❌ No PDFs without email addresses found")
+            return
+        
+        output_file = "policies_for_printing.pdf"
+        
+        status_placeholder.info("🔍 Scanning PDF files...")
+        
+        # Get all PDF files
+        pdf_files = list(Path(input_folder).glob("*.pdf"))
+        pdf_files.sort()  # Sort for consistent order
+        
+        if not pdf_files:
+            st.error(f"❌ No PDF files found in '{input_folder}' folder")
+            return
+        
+        status_placeholder.success(f"📁 Found {len(pdf_files)} PDF files to merge")
+        
+        # Delete existing output file if it exists
+        if os.path.exists(output_file):
+            try:
+                os.remove(output_file)
+                status_placeholder.info("🗑️ Removed existing merged file")
+            except Exception as e:
+                st.error(f"⚠️ Could not delete existing file: {e}")
+                st.warning("Please close any PDF viewers and try again")
+                return
+        
+        # Initialize progress tracking
+        progress_placeholder.progress(0, "Starting PDF merge...")
+        
+        # Use PyPDF2 PdfFileMerger for robust merging
+        merger = PyPDF2.PdfFileMerger()
+        successful_merges = 0
+        failed_files = []
+        
+        # Merge PDFs with progress updates
+        for i, pdf_path in enumerate(pdf_files):
+            try:
+                # Update progress
+                progress = (i + 1) / len(pdf_files)
+                progress_placeholder.progress(
+                    progress, 
+                    f"Processing {i+1}/{len(pdf_files)}: {pdf_path.name}"
                 )
-
-
+                
+                # Add PDF to merger
+                merger.append(str(pdf_path))
+                successful_merges += 1
+                
+                # Show details every 10 files or for small batches
+                if i % 10 == 0 or len(pdf_files) <= 20:
+                    details_placeholder.info(f"📄 Added: {pdf_path.name}")
+                
+            except Exception as e:
+                failed_files.append((pdf_path.name, str(e)))
+                details_placeholder.warning(f"⚠️ Skipped {pdf_path.name}: {str(e)}")
+                continue
+        
+        if successful_merges == 0:
+            st.error("❌ No PDFs could be merged")
+            return
+        
+        # Write the merged PDF
+        status_placeholder.info("💾 Writing merged PDF file...")
+        progress_placeholder.progress(0.95, "Finalizing merged PDF...")
+        
+        try:
+            with open(output_file, 'wb') as output:
+                merger.write(output)
+            merger.close()
+            
+        except Exception as e:
+            st.error(f"❌ Error writing output file: {e}")
+            st.warning("Make sure no PDF viewer has the file open")
+            return
+        
+        # Get final statistics
+        file_size = os.path.getsize(output_file)
+        
+        # Count pages in final PDF
+        try:
+            with open(output_file, 'rb') as f:
+                reader = PyPDF2.PdfFileReader(f)
+                total_pages = reader.numPages
+        except:
+            total_pages = "Unknown"
+        
+        # Complete progress
+        progress_placeholder.progress(1.0, "✅ PDF merge completed!")
+        
+        # Show success message
+        st.success("🎉 PDF merging completed successfully!")
+        st.balloons()
+        
+        # Display merge statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📄 PDFs Merged", successful_merges)
+        with col2:
+            st.metric("📊 Total Pages", total_pages)
+        with col3:
+            st.metric("💾 File Size", f"{file_size / 1024 / 1024:.1f} MB")
+        with col4:
+            st.metric("❌ Failed", len(failed_files))
+        
+        # Download button for the merged PDF
+        with open(output_file, 'rb') as f:
+            pdf_data = f.read()
+        
+        st.download_button(
+            label="📥 Download Merged PDF for Printing",
+            data=pdf_data,
+            file_name=f"policies_for_printing_{time.strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+        
+        # Show merge details
+        with st.expander("📋 Merge Details"):
+            st.markdown(f"""
+            **📊 Merge Summary:**
+            - **Input Folder**: {input_folder}
+            - **Output File**: {output_file}
+            - **Successfully Merged**: {successful_merges} PDFs
+            - **Total Pages**: {total_pages}
+            - **File Size**: {file_size / 1024 / 1024:.1f} MB
+            """)
+            
+            if failed_files:
+                st.markdown("**⚠️ Failed Files:**")
+                for filename, error in failed_files:
+                    st.text(f"• {filename}: {error}")
+            else:
+                st.success("✅ All PDFs merged successfully!")
+        
+        # Instructions for printing
+        st.markdown("---")
+        st.info("""
+        **🖨️ Printing Instructions:**
+        1. Download the merged PDF file above
+        2. Open it in a PDF viewer (Adobe Reader, etc.)
+        3. Print using your preferred printer settings
+        4. Consider duplex printing to save paper
+        5. Use the merged file for bulk mailing of policies without email addresses
+        """)
+        
+    except Exception as e:
+        st.error(f"❌ Error during PDF merging: {str(e)}")
+        st.exception(e)
 
 def main():
     st.title("📄 PDF Policy Processor")
@@ -369,28 +857,9 @@ def main():
                     key="download_without_email"
                 )
         
-        # Email sending section - NO SUBPROCESS, JUST INSTRUCTIONS
-        if results['with_email'] > 0:
-            st.markdown("---")
-            st.subheader("📧 Email Sending")
-            
-            st.info(f"📊 {results['with_email']} policies are ready for email sending")
-            st.info("📧 Sender: cremur9@gmail.com (NIC Mauritius)")
-            
-            # Show instructions instead of trying to run subprocess
-            st.markdown("### 🚀 To Send Emails:")
-            st.markdown("**Step 1:** Open a new command prompt/terminal")
-            st.markdown("**Step 2:** Navigate to this folder")
-            st.markdown("**Step 3:** Run the email script:")
-            
-            st.code("python send_emails_brevo.py", language="bash")
-            
-            st.success("✅ All policy files are ready in the 'policies_with_email' folder")
+
         
-        # PDF Merging for Printing section
-        if results['without_email'] > 0:
-            st.markdown("---")
-            merge_pdfs_streamlit()
+
         
         # Reset button
         st.markdown("---")
@@ -405,12 +874,70 @@ def main():
     else:
         st.info("👆 Please upload both PDF and Excel files to begin processing")
     
+    # Email Management Section
+    if st.session_state.processing_done and st.session_state.results:
+        st.markdown("---")
+        st.header("📧 Email Management")
+        
+        # Check if we have the necessary files for email sending
+        excel_file_exists = check_excel_file_exists()
+        pdf_files_exist = check_pdf_files_exist()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📋 Email Readiness Check")
+            if excel_file_exists:
+                st.success("✅ Excel file with email addresses found")
+            else:
+                st.error("❌ Excel file not found")
+            
+            if pdf_files_exist:
+                st.success(f"✅ {pdf_files_exist} PDF files ready for sending")
+            else:
+                st.error("❌ No PDF files found")
+        
+        with col2:
+            st.subheader("🚀 Send Emails")
+            if excel_file_exists and pdf_files_exist:
+                if st.button("📧 Send Emails Now", type="primary", use_container_width=True):
+                    send_emails_via_subprocess()
+            else:
+                st.button("📧 Send Emails Now", disabled=True, use_container_width=True)
+                st.caption("⚠️ Upload and process files first")
+        
+        # PDF Merging Section for Printing
+        st.markdown("---")
+        st.header("🖨️ PDF Merging for Printing")
+        
+        # Check if we have PDFs without email addresses
+        pdf_without_email_count = check_pdf_files_without_email()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📋 Printing Readiness Check")
+            if pdf_without_email_count > 0:
+                st.success(f"✅ {pdf_without_email_count} PDFs ready for printing")
+                st.info("💡 These are policies without email addresses that need to be printed and mailed manually.")
+            else:
+                st.info("ℹ️ No PDFs without email addresses found")
+        
+        with col2:
+            st.subheader("🔗 Merge PDFs")
+            if pdf_without_email_count > 0:
+                if st.button("🖨️ Create Printable PDF", type="secondary", use_container_width=True):
+                    merge_pdfs_for_printing()
+            else:
+                st.button("🖨️ Create Printable PDF", disabled=True, use_container_width=True)
+                st.caption("⚠️ No PDFs without email addresses to merge")
+    
     # Footer
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #666;'>
         <p>PDF Policy Processor v1.0 | Built with Streamlit</p>
-        <p>For email sending, use the command line after processing</p>
+        <p>Complete workflow: Upload → Process → Send Emails</p>
     </div>
     """, unsafe_allow_html=True)
 
